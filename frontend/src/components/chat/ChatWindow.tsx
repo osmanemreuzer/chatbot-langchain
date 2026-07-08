@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { getMessages, sendMessage } from "../../api/chat";
+import { getConversation, sendMessage } from "../../api/chat";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import ChatHeader from "./ChatHeader";
@@ -14,46 +14,28 @@ interface Props {
 export default function ChatWindow({ conversationId, conversationTitle }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const [thinking, setThinking] = useState(false);
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!conversationId) return;
     setLoading(true);
-    getMessages(conversationId)
-      .then((r) => setMessages(r.data))
+    getConversation(conversationId)
+      .then((r) => setMessages(r.data.messages))
       .finally(() => setLoading(false));
   }, [conversationId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, thinking]);
+  }, [messages]);
 
   const handleSend = async (content: string) => {
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content,
-      createdAt: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setThinking(true);
-
+    setSending(true);
     try {
       const { data } = await sendMessage(conversationId, content);
       setMessages((prev) => [...prev, data]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          role: "assistant",
-          content: "Bir hata oluştu. Lütfen tekrar deneyin.",
-          createdAt: new Date().toISOString(),
-        },
-      ]);
     } finally {
-      setThinking(false);
+      setSending(false);
     }
   };
 
@@ -77,16 +59,9 @@ export default function ChatWindow({ conversationId, conversationTitle }: Props)
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
-        {thinking && (
-          <div className="message-row assistant">
-            <div className="message-bubble assistant thinking">
-              <span className="dot" /><span className="dot" /><span className="dot" />
-            </div>
-          </div>
-        )}
         <div ref={bottomRef} />
       </div>
-      <ChatInput onSend={handleSend} disabled={thinking} />
+      <ChatInput onSend={handleSend} disabled={sending} />
     </div>
   );
 }

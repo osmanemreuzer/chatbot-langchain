@@ -17,6 +17,10 @@ export interface Conversation {
   updatedAt: string;
 }
 
+export interface ConversationDetail extends Conversation {
+  messages: Message[];
+}
+
 export interface AuthResponse {
   token: string;
   user: User;

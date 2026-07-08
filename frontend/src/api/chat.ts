@@ -1,5 +1,5 @@
 import client from "./client";
-import type { Conversation, Message } from "../types";
+import type { Conversation, ConversationDetail, Message } from "../types";
 
 export const getConversations = () =>
   client.get<Conversation[]>("/conversations");
@@ -7,11 +7,14 @@ export const getConversations = () =>
 export const createConversation = () =>
   client.post<Conversation>("/conversations");
 
-export const getMessages = (conversationId: string) =>
-  client.get<Message[]>(`/conversations/${conversationId}/messages`);
+export const getConversation = (conversationId: string) =>
+  client.get<ConversationDetail>(`/conversations/${conversationId}`);
 
 export const sendMessage = (conversationId: string, content: string) =>
-  client.post<Message>(`/conversations/${conversationId}/messages`, { content });
+  client.post<Message>(`/conversations/${conversationId}/messages`, {
+    role: "user",
+    content,
+  });
 
 export const deleteConversation = (conversationId: string) =>
   client.delete(`/conversations/${conversationId}`);
