@@ -1,5 +1,5 @@
-import { useState, type KeyboardEvent } from "react";
-import { Send, Smile } from "lucide-react";
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { Paperclip, Send } from "lucide-react";
 
 interface Props {
   onSend: (content: string) => void;
@@ -8,6 +8,7 @@ interface Props {
 
 export default function ChatInput({ onSend, disabled }: Props) {
   const [value, setValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
     const trimmed = value.trim();
@@ -23,11 +24,31 @@ export default function ChatInput({ onSend, disabled }: Props) {
     }
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // TODO: step 19'da doküman yükleme backend'ine bağlanacak
+      console.log("Dosya seçildi:", file.name);
+    }
+    e.target.value = "";
+  };
+
   return (
     <div className="chat-input-area">
       <div className="chat-input-box">
-        <button className="btn-emoji" title="Emoji">
-          <Smile size={22} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          onChange={handleFileChange}
+        />
+        <button
+          className="btn-emoji"
+          title="Dosya Ekle"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled}
+        >
+          <Paperclip size={22} />
         </button>
         <textarea
           className="chat-input"
