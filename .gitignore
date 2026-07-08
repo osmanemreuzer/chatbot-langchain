@@ -1,0 +1,31 @@
+# .NET
+backend/**/bin/
+backend/**/obj/
+*.user
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python
+ai-service/__pycache__/
+ai-service/**/__pycache__/
+ai-service/.venv/
+ai-service/venv/
+ai-service/*.egg-info/
+
+# Env / secrets
+.env
+.env.local
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+*.log
+Thumbs.db
+.DS_Store
