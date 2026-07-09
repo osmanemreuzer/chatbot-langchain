@@ -7,10 +7,12 @@ namespace ChatBot.Application.Services;
 public class ConversationService : IConversationService
 {
     private readonly IConversationRepository _conversationRepository;
+    private readonly IAIService _aiService;
 
-    public ConversationService(IConversationRepository conversationRepository)
+    public ConversationService(IConversationRepository conversationRepository, IAIService aiService)
     {
         _conversationRepository = conversationRepository;
+        _aiService = aiService;
     }
 
     public async Task<List<ConversationDto>> GetConversationsAsync(Guid userId)
@@ -39,6 +41,8 @@ public class ConversationService : IConversationService
             conversation.Id, conversation.Title, conversation.CreatedAt, conversation.UpdatedAt, messages);
     }
 
+    private const string WelcomeMessage = "Merhaba, ben AP Asistanı. Size nasıl yardımcı olabilirim?";
+
     public async Task<ConversationDto> CreateConversationAsync(Guid userId, CreateConversationRequest request)
     {
         var conversation = new Conversation
@@ -49,10 +53,17 @@ public class ConversationService : IConversationService
 
         await _conversationRepository.AddAsync(conversation);
 
+        await _conversationRepository.AddMessageAsync(new Message
+        {
+            ConversationId = conversation.Id,
+            Role = "assistant",
+            Content = WelcomeMessage
+        });
+
         return new ConversationDto(conversation.Id, conversation.Title, conversation.CreatedAt, conversation.UpdatedAt);
     }
 
-    public async Task<MessageDto?> AddMessageAsync(Guid userId, Guid conversationId, AddMessageRequest request)
+    public async Task<List<MessageDto>?> AddMessageAsync(Guid userId, Guid conversationId, AddMessageRequest request)
     {
         var conversation = await _conversationRepository.GetByIdAsync(conversationId);
         if (conversation is null || conversation.UserId != userId)
@@ -60,7 +71,7 @@ public class ConversationService : IConversationService
             return null;
         }
 
-        var message = new Message
+        var userMessage = new Message
         {
             ConversationId = conversation.Id,
             Role = request.Role,
@@ -68,9 +79,40 @@ public class ConversationService : IConversationService
         };
 
         conversation.UpdatedAt = DateTime.UtcNow;
-        await _conversationRepository.AddMessageAsync(message);
+        await _conversationRepository.AddMessageAsync(userMessage);
 
-        return new MessageDto(message.Id, message.Role, message.Content, message.CreatedAt);
+        var createdMessages = new List<MessageDto>
+        {
+            new(userMessage.Id, userMessage.Role, userMessage.Content, userMessage.CreatedAt)
+        };
+
+        if (request.Role == "user")
+        {
+            string replyContent;
+            try
+            {
+                replyContent = await _aiService.GetReplyAsync(request.Content);
+            }
+            catch (HttpRequestException)
+            {
+                replyContent = "AI servisine şu anda ulaşılamıyor, lütfen daha sonra tekrar deneyin.";
+            }
+
+            var assistantMessage = new Message
+            {
+                ConversationId = conversation.Id,
+                Role = "assistant",
+                Content = replyContent
+            };
+
+            conversation.UpdatedAt = DateTime.UtcNow;
+            await _conversationRepository.AddMessageAsync(assistantMessage);
+
+            createdMessages.Add(new MessageDto(
+                assistantMessage.Id, assistantMessage.Role, assistantMessage.Content, assistantMessage.CreatedAt));
+        }
+
+        return createdMessages;
     }
 
     public async Task<bool> DeleteConversationAsync(Guid userId, Guid conversationId)

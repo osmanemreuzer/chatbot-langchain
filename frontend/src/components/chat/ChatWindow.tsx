@@ -30,10 +30,18 @@ export default function ChatWindow({ conversationId, conversationTitle }: Props)
   }, [messages]);
 
   const handleSend = async (content: string) => {
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMessage: Message = {
+      id: tempId,
+      role: "user",
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMessage]);
     setSending(true);
     try {
       const { data } = await sendMessage(conversationId, content);
-      setMessages((prev) => [...prev, data]);
+      setMessages((prev) => [...prev.filter((m) => m.id !== tempId), ...data]);
     } finally {
       setSending(false);
     }
@@ -59,6 +67,15 @@ export default function ChatWindow({ conversationId, conversationTitle }: Props)
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
+        {sending && (
+          <div className="message-row assistant">
+            <div className="message-bubble assistant typing-bubble">
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+              <span className="typing-dot" />
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
       <ChatInput onSend={handleSend} disabled={sending} />

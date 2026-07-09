@@ -5,13 +5,13 @@ export const getConversations = () =>
   client.get<Conversation[]>("/conversations");
 
 export const createConversation = () =>
-  client.post<Conversation>("/conversations");
+  client.post<Conversation>("/conversations", {});
 
 export const getConversation = (conversationId: string) =>
   client.get<ConversationDetail>(`/conversations/${conversationId}`);
 
 export const sendMessage = (conversationId: string, content: string) =>
-  client.post<Message>(`/conversations/${conversationId}/messages`, {
+  client.post<Message[]>(`/conversations/${conversationId}/messages`, {
     role: "user",
     content,
   });

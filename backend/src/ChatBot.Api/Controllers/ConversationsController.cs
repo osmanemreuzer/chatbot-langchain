@@ -61,14 +61,14 @@ public class ConversationsController : ControllerBase
     [HttpPost("{id:guid}/messages")]
     public async Task<IActionResult> AddMessage(Guid id, AddMessageRequest request)
     {
-        var message = await _conversationService.AddMessageAsync(GetUserId(), id, request);
+        var messages = await _conversationService.AddMessageAsync(GetUserId(), id, request);
 
-        if (message is null)
+        if (messages is null)
         {
             return NotFound(new { error = "Sohbet bulunamadı." });
         }
 
-        return CreatedAtAction(nameof(GetConversation), new { id }, message);
+        return CreatedAtAction(nameof(GetConversation), new { id }, messages);
     }
 
     private Guid GetUserId()
