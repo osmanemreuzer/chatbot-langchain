@@ -6,13 +6,20 @@ namespace ChatBot.Application.Services;
 
 public class ConversationService : IConversationService
 {
+    private const int RagChunkLimit = 3;
+
     private readonly IConversationRepository _conversationRepository;
     private readonly IAIService _aiService;
+    private readonly IDocumentRepository _documentRepository;
 
-    public ConversationService(IConversationRepository conversationRepository, IAIService aiService)
+    public ConversationService(
+        IConversationRepository conversationRepository,
+        IAIService aiService,
+        IDocumentRepository documentRepository)
     {
         _conversationRepository = conversationRepository;
         _aiService = aiService;
+        _documentRepository = documentRepository;
     }
 
     public async Task<List<ConversationDto>> GetConversationsAsync(Guid userId)
@@ -91,7 +98,8 @@ public class ConversationService : IConversationService
             string replyContent;
             try
             {
-                replyContent = await _aiService.GetReplyAsync(request.Content);
+                var context = await BuildRagContextAsync(userId, request.Content);
+                replyContent = await _aiService.GetReplyAsync(request.Content, context);
             }
             catch (HttpRequestException)
             {
@@ -113,6 +121,26 @@ public class ConversationService : IConversationService
         }
 
         return createdMessages;
+    }
+
+    // Soruyu embed edip kullanıcının dokümanlarındaki en yakın chunk'ları context olarak birleştirir.
+    // Doküman yoksa null döner (düz sohbet); embedding hatası düz sohbete düşürülür, akışı kırmaz.
+    private async Task<string?> BuildRagContextAsync(Guid userId, string question)
+    {
+        List<DocumentChunk> chunks;
+        try
+        {
+            var queryEmbedding = await _aiService.EmbedQueryAsync(question);
+            chunks = await _documentRepository.GetNearestChunksAsync(userId, queryEmbedding, RagChunkLimit);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+
+        return chunks.Count == 0
+            ? null
+            : string.Join("\n\n---\n\n", chunks.Select(c => c.Content));
     }
 
     public async Task<bool> DeleteConversationAsync(Guid userId, Guid conversationId)
