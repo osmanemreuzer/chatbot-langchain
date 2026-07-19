@@ -30,3 +30,11 @@ export interface SendMessageRequest {
   conversationId: string;
   content: string;
 }
+
+export interface DocumentItem {
+  id: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}

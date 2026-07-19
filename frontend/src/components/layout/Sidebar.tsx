@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Search, MessageCircle, Trash2, LogOut, Edit3, Bot } from "lucide-react";
+import { Search, MessageCircle, Trash2, LogOut, Edit3, Bot, FileText } from "lucide-react";
 import { getConversations, createConversation, deleteConversation } from "../../api/chat";
 import { authStore, useAuth } from "../../store/authStore";
 import type { Conversation } from "../../types";
+import DocumentsModal from "../documents/DocumentsModal";
 
 interface Props {
   activeId: string | null;
@@ -21,6 +22,7 @@ function formatTime(dateStr: string) {
 export default function Sidebar({ activeId, onSelect }: Props) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [search, setSearch] = useState("");
+  const [showDocuments, setShowDocuments] = useState(false);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -53,6 +55,9 @@ export default function Sidebar({ activeId, onSelect }: Props) {
           <div className="sidebar-avatar">{userInitial}</div>
         </div>
         <div className="sidebar-header-icons">
+          <button className="btn-icon" onClick={() => setShowDocuments(true)} title="Dokümanlar">
+            <FileText size={20} />
+          </button>
           <button className="btn-icon" onClick={handleNew} title="Yeni Sohbet">
             <Edit3 size={20} />
           </button>
@@ -61,6 +66,8 @@ export default function Sidebar({ activeId, onSelect }: Props) {
           </button>
         </div>
       </div>
+
+      {showDocuments && <DocumentsModal onClose={() => setShowDocuments(false)} />}
 
       <div className="sidebar-search">
         <div className="sidebar-search-input-wrap">
