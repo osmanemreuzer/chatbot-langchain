@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { Paperclip, Send } from "lucide-react";
 
 interface Props {
@@ -9,6 +9,26 @@ interface Props {
 export default function ChatInput({ onSend, disabled }: Props) {
   const [value, setValue] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // disabled (AI cevap beklerken) true->false olunca textarea'yı otomatik
+  // odakla; browser disabled input'tan focus'u kaybediyor ve geri vermiyor.
+  useEffect(() => {
+    if (!disabled) {
+      textareaRef.current?.focus();
+    }
+  }, [disabled]);
+
+  // textarea rows={1} ile sabit tek satır yükseklikte; yazı uzayınca kutu
+  // büyümediği için fazla kelimeler görünmez oluyordu. İçerik değiştikçe
+  // yüksekliği scrollHeight'a göre yeniden hesaplıyoruz (CSS'teki max-height
+  // sınırına kadar büyür, sonrası kutu içinde kayar).
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   const handleSend = () => {
     const trimmed = value.trim();
@@ -51,6 +71,7 @@ export default function ChatInput({ onSend, disabled }: Props) {
           <Paperclip size={22} />
         </button>
         <textarea
+          ref={textareaRef}
           className="chat-input"
           value={value}
           onChange={(e) => setValue(e.target.value)}
