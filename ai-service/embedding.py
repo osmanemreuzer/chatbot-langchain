@@ -2,6 +2,8 @@ from typing import cast
 
 import voyageai
 
+from rate_limit_retry import with_rate_limit_retry
+
 EMBEDDING_MODEL = "voyage-4-lite"
 
 # Voyage API tek istekte sınırlı sayıda metin kabul ediyor, uzun listeleri parça parça göndeririz.
@@ -30,7 +32,9 @@ def embed_texts(texts: list[str], input_type: str = "document") -> list[list[flo
 
     for start in range(0, len(texts), BATCH_SIZE):
         batch = texts[start:start + BATCH_SIZE]
-        result = client.embed(batch, model=EMBEDDING_MODEL, input_type=input_type)
+        result = with_rate_limit_retry(
+            lambda: client.embed(batch, model=EMBEDDING_MODEL, input_type=input_type)
+        )
         # output_dtype istemediğimiz için API her zaman float döner; kütüphanenin
         # "float veya int olabilir" tip tanımını cast ile daraltıyoruz.
         embeddings.extend(cast(list[list[float]], result.embeddings))
