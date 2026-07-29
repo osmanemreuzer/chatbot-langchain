@@ -19,7 +19,13 @@ public class DocumentProcessingService : IDocumentProcessingService
         using var formData = new MultipartFormDataContent();
         using var streamContent = new StreamContent(content);
         streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
-        formData.Add(streamContent, "file", fileName);
+
+        // AI servisi dosya türünü sadece uzantıdan çıkarıyor, orijinal dosya adına ihtiyacı yok
+        // (o zaten Documents tablosunda ayrıca saklanıyor). HttpClient'ın MultipartFormDataContent'i
+        // Unicode dosya adlarını Content-Disposition header'ında düzgün encode edemediği için
+        // (örn. Türkçe karakterler), burada ASCII-güvenli sabit bir ad kullanıyoruz.
+        var safeFileName = "file" + Path.GetExtension(fileName);
+        formData.Add(streamContent, "file", safeFileName);
 
         var response = await _httpClient.PostAsync("/documents/process", formData);
         response.EnsureSuccessStatusCode();

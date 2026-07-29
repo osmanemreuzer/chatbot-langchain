@@ -37,6 +37,8 @@ builder.Services.AddHttpClient<IAIService, AIService>(client =>
 builder.Services.AddHttpClient<IDocumentProcessingService, DocumentProcessingService>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["AIService:BaseUrl"]!);
+    // Büyük dokümanlarda extraction + chunk'ların embed edilmesi 100sn'lik varsayılanı aşabiliyor.
+    client.Timeout = TimeSpan.FromMinutes(5);
 });
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(
