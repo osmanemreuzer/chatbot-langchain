@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
+using ChatBot.Application.DTOs;
 using ChatBot.Application.Interfaces;
 
 namespace ChatBot.Infrastructure.AI;
@@ -13,9 +14,14 @@ public class AIService : IAIService
         _httpClient = httpClient;
     }
 
-    public async Task<string> GetReplyAsync(string message, string? context = null)
+    public async Task<string> GetReplyAsync(string message, IReadOnlyList<ChatHistoryMessage> history, string? context = null)
     {
-        var response = await _httpClient.PostAsJsonAsync("/chat", new ChatRequest(message, context));
+        var request = new ChatRequest(
+            message,
+            context,
+            history.Select(h => new ChatHistoryItem(h.Role, h.Content)).ToList());
+
+        var response = await _httpClient.PostAsJsonAsync("/chat", request);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<ChatResponse>();
@@ -33,7 +39,12 @@ public class AIService : IAIService
 
     private record ChatRequest(
         [property: JsonPropertyName("message")] string Message,
-        [property: JsonPropertyName("context")] string? Context);
+        [property: JsonPropertyName("context")] string? Context,
+        [property: JsonPropertyName("history")] List<ChatHistoryItem> History);
+
+    private record ChatHistoryItem(
+        [property: JsonPropertyName("role")] string Role,
+        [property: JsonPropertyName("content")] string Content);
 
     private record ChatResponse([property: JsonPropertyName("reply")] string Reply);
 

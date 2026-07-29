@@ -8,6 +8,12 @@ public class ConversationService : IConversationService
 {
     private const int RagChunkLimit = 3;
 
+    // Claude'a gönderilen geçmiş, token maliyetini sınırlamak için son N mesajla
+    // kesiliyor. Çift olmak zorunda: mesajlar user/assistant sırasıyla dönüşümlü
+    // dizildiğinden tek sayı kesim dizinin assistant ile
+    // başlamasına yol açar ve Claude API bunu reddeder.
+    private const int MaxHistoryMessages = 10;
+
     private readonly IConversationRepository _conversationRepository;
     private readonly IAIService _aiService;
     private readonly IDocumentRepository _documentRepository;
@@ -48,7 +54,7 @@ public class ConversationService : IConversationService
             conversation.Id, conversation.Title, conversation.CreatedAt, conversation.UpdatedAt, messages);
     }
 
-    private const string WelcomeMessage = "Merhaba, ben AP Asistanı. Size nasıl yardımcı olabilirim?";
+    private const string WelcomeMessage = "Merhaba, ben EE Asistanı. Size nasıl yardımcı olabilirim?";
 
     public async Task<ConversationDto> CreateConversationAsync(Guid userId, CreateConversationRequest request)
     {
@@ -72,11 +78,20 @@ public class ConversationService : IConversationService
 
     public async Task<List<MessageDto>?> AddMessageAsync(Guid userId, Guid conversationId, AddMessageRequest request)
     {
-        var conversation = await _conversationRepository.GetByIdAsync(conversationId);
+        var conversation = await _conversationRepository.GetByIdWithMessagesAsync(conversationId);
         if (conversation is null || conversation.UserId != userId)
         {
             return null;
         }
+
+        // Claude'un messages listesi "user" ile başlamalı; ilk mesaj olan
+        // karşılama (assistant) mesajını ve öncesini atlıyoruz.
+        var history = conversation.Messages
+            .OrderBy(m => m.CreatedAt)
+            .SkipWhile(m => m.Role != "user")
+            .TakeLast(MaxHistoryMessages)
+            .Select(m => new ChatHistoryMessage(m.Role, m.Content))
+            .ToList();
 
         var userMessage = new Message
         {
@@ -99,7 +114,7 @@ public class ConversationService : IConversationService
             try
             {
                 var context = await BuildRagContextAsync(userId, request.Content);
-                replyContent = await _aiService.GetReplyAsync(request.Content, context);
+                replyContent = await _aiService.GetReplyAsync(request.Content, history, context);
             }
             catch (HttpRequestException)
             {
@@ -130,8 +145,8 @@ public class ConversationService : IConversationService
         List<DocumentChunk> chunks;
         try
         {
-            var queryEmbedding = await _aiService.EmbedQueryAsync(question);
-            chunks = await _documentRepository.GetNearestChunksAsync(userId, queryEmbedding, RagChunkLimit);
+            var queryEmbedding = await _aiService.EmbedQueryAsync(question);//Kullanıcının sorusunu bir embedding vektörüne çeviriyor
+            chunks = await _documentRepository.GetNearestChunksAsync(userId, queryEmbedding, RagChunkLimit);//O vektöre anlamca en yakın 3 doküman parçasını veritabanından (muhtemelen vektör benzerliği ile) çekiyor
         }
         catch (HttpRequestException)
         {

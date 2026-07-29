@@ -1,8 +1,10 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from anthropic import Anthropic
+from anthropic.types import MessageParam
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile
 from pydantic import BaseModel
@@ -33,9 +35,15 @@ Konuşma tarzın:
 - Kullanıcı hangi dilde yazarsa o dilde cevap ver."""
 
 
+class HistoryMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str
     context: str | None = None  # RAG: soruyla ilgili doküman bölümleri (.NET dolduruyor)
+    history: list[HistoryMessage] = []  # bu sohbetteki önceki mesajlar
 
 
 class ChatResponse(BaseModel):
@@ -77,11 +85,16 @@ def chat(request: ChatRequest):
             "olmadığını söyle.\n\n--- DOKÜMAN BÖLÜMLERİ ---\n" + request.context
         )
 
+    messages: list[MessageParam] = [
+        {"role": h.role, "content": h.content} for h in request.history
+    ]
+    messages.append({"role": "user", "content": request.message})
+
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1024,
         system=system,
-        messages=[{"role": "user", "content": request.message}],
+        messages=messages,
     )
     text_block = next(block for block in response.content if block.type == "text")
     return ChatResponse(reply=text_block.text)
