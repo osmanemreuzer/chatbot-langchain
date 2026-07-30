@@ -91,7 +91,7 @@ def chat(request: ChatRequest):
     messages.append({"role": "user", "content": request.message})
 
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-5",
         max_tokens=1024,
         system=system,
         messages=messages,
