@@ -1,35 +1,37 @@
-# EE Asistanı — RAG Tabanlı Teknik Destek Chatbotu
+*English | [Türkçe](README.tr.md)*
 
-Çevre mühendisliği / su arıtma alanında (RO ve NF membran sistemleri) çalışan teknik ekiplere yardımcı olmak için geliştirilen, doküman tabanlı (RAG) bir yapay zeka asistanı. Kullanıcılar teknik kılavuz dokümanlarını yükler, asistan bu dokümanlardan öğrendiği bilgilerle sorulara cevap verir ve gerektiğinde otomatik olarak destek talebi (ticket) açabilir.
+# EE Assistant — RAG-Based Technical Support Chatbot
 
-Bu proje, full-stack bir yazılım stajı kapsamında sıfırdan, adım adım geliştirilmiştir.
+An AI assistant built for technical teams working in environmental engineering / water treatment (RO and NF membrane systems). Users upload technical guideline documents, and the assistant answers questions grounded in that knowledge (RAG) — and can automatically open a support ticket when needed.
 
-## Öne Çıkan Özellikler
+This project was built from scratch, step by step, as part of a full-stack software internship.
 
-- 🔐 **JWT tabanlı kimlik doğrulama** — kayıt/giriş, korumalı endpoint'ler
-- 💬 **Çoklu sohbet yönetimi** — birden fazla konuşma, geçmişe dönük mesaj listesi, çoklu-tur (multi-turn) bağlam
-- 📄 **Doküman yükleme ve işleme** — PDF / DOCX / TXT / MD dosyalarından metin çıkarma, chunk'lama ve embedding üretimi
-- 🔎 **RAG (Retrieval-Augmented Generation)** — kullanıcı sorusu embed edilip pgvector ile en alakalı doküman parçaları bulunur, Claude'a bağlam olarak verilir
-- 🎯 **Kapsam kontrolü** — asistan yalnızca kendi uzmanlık alanındaki sorulara cevap verir, alan dışı sorularda (matematik, genel kültür vb.) nazikçe reddeder
-- 🛠️ **Tool calling ile otomatik destek talebi** — kullanıcı açıkça bir arıza/destek talebi oluşturulmasını istediğinde, Claude ilgili tool'u çağırır ve sistem otomatik olarak ticket kaydı oluşturur
-- 🎨 **Modern sohbet arayüzü** — ChatGPT/Claude tarzında, doküman-özel öneri kartları, gerçek zamanlı "yazıyor..." göstergesi
+## Key Features
 
-## Mimari
+- 🔐 **JWT-based authentication** — register/login, protected endpoints
+- 💬 **Multi-conversation management** — multiple chats, persisted message history, multi-turn context
+- 📄 **Document upload & processing** — text extraction, chunking, and embedding generation for PDF / DOCX / TXT / MD files
+- 🔎 **RAG (Retrieval-Augmented Generation)** — the user's question is embedded and matched against document chunks via pgvector, which are then passed to Claude as context
+- 🎯 **Scope control** — the assistant only answers questions within its domain and politely declines out-of-scope ones (math, general knowledge, etc.)
+- 🛠️ **Tool calling for automatic support tickets** — when a user explicitly asks for a support/service request, Claude calls a tool and the backend automatically creates a ticket
+- 🎨 **Modern chat UI** — ChatGPT/Claude-style interface with document-specific suggestion cards and a real-time "typing..." indicator
+
+## Architecture
 
 ```mermaid
 flowchart LR
     subgraph Frontend["React + TypeScript (Vite)"]
-        UI[Sohbet Arayüzü]
+        UI[Chat UI]
     end
 
     subgraph Backend[".NET Core Web API (Clean Architecture)"]
         API[Controllers]
-        APP[Application: Servisler]
-        DOM[Domain: Entity'ler]
-        INFRA[Infrastructure: EF Core / Repository]
+        APP[Application: Services]
+        DOM[Domain: Entities]
+        INFRA[Infrastructure: EF Core / Repositories]
     end
 
-    subgraph AIService["Python FastAPI — AI Servisi"]
+    subgraph AIService["Python FastAPI — AI Service"]
         CHAT[/chat/]
         EMBED[/embeddings/query/]
         PROC[/documents/process/]
@@ -49,46 +51,46 @@ flowchart LR
     PROC --> VOYAGE
 ```
 
-Sorumluluk paylaşımı net bir sınırla ayrılmıştır: **.NET** kimlik doğrulama, veri kalıcılığı, iş kuralları ve vektör benzerlik aramasını (pgvector) yönetir; **Python** yalnızca AI/ML işlerini (LLM çağrısı, embedding üretimi, doküman parçalama) yapar ve HTTP üzerinden .NET'e hizmet verir.
+Responsibilities are cleanly split: **.NET** owns authentication, data persistence, business rules, and vector similarity search (pgvector); **Python** handles AI/ML work only (LLM calls, embedding generation, document chunking) and serves it to .NET over HTTP.
 
-## Teknoloji Yığını
+## Tech Stack
 
-| Katman | Teknolojiler |
+| Layer | Technologies |
 |---|---|
 | **Frontend** | React 19, TypeScript, Vite, React Router, Axios, react-markdown |
 | **Backend** | .NET 10 (ASP.NET Core Web API), Clean Architecture (Domain / Application / Infrastructure / Api), Entity Framework Core, JWT Bearer Auth, BCrypt |
-| **AI Servisi** | Python, FastAPI, Anthropic SDK (Claude), Voyage AI (embeddings), pypdf / python-docx (doküman çıkarma) |
-| **Veritabanı** | PostgreSQL 16 + pgvector (vektör benzerlik araması) |
-| **Altyapı** | Docker Compose (PostgreSQL) |
+| **AI Service** | Python, FastAPI, Anthropic SDK (Claude), Voyage AI (embeddings), pypdf / python-docx (document extraction) |
+| **Database** | PostgreSQL 16 + pgvector (vector similarity search) |
+| **Infrastructure** | Docker Compose (PostgreSQL) |
 
-## Proje Yapısı
+## Project Structure
 
 ```
 chatbot-app/
 ├── frontend/           # React + TypeScript SPA
 │   └── src/
-│       ├── api/            # Backend'e HTTP istekleri
-│       ├── components/     # Sohbet, doküman, layout bileşenleri
+│       ├── api/            # HTTP calls to the backend
+│       ├── components/     # Chat, document, layout components
 │       └── store/          # Auth state
 ├── backend/
 │   └── src/
-│       ├── ChatBot.Domain/          # Entity'ler (User, Conversation, Message, Document, SupportTicket...)
-│       ├── ChatBot.Application/     # Servisler, DTO'lar, interface'ler
-│       ├── ChatBot.Infrastructure/  # EF Core, repository implementasyonları, AI servis istemcisi
-│       └── ChatBot.Api/             # Controller'lar, DI konfigürasyonu
-├── ai-service/          # Python FastAPI — Claude entegrasyonu, embedding, chunking
+│       ├── ChatBot.Domain/          # Entities (User, Conversation, Message, Document, SupportTicket...)
+│       ├── ChatBot.Application/     # Services, DTOs, interfaces
+│       ├── ChatBot.Infrastructure/  # EF Core, repository implementations, AI service client
+│       └── ChatBot.Api/             # Controllers, DI configuration
+├── ai-service/          # Python FastAPI — Claude integration, embeddings, chunking
 └── docker-compose.yml   # PostgreSQL + pgvector
 ```
 
-## Kurulum ve Çalıştırma
+## Getting Started
 
-### Gereksinimler
+### Prerequisites
 - .NET 10 SDK
 - Node.js 20+
 - Python 3.12+
-- Docker (PostgreSQL için)
+- Docker (for PostgreSQL)
 
-### 1. Veritabanı
+### 1. Database
 
 ```bash
 docker compose up -d
@@ -102,16 +104,16 @@ dotnet ef database update
 dotnet run
 ```
 
-`appsettings.Development.json` içinde bağlantı dizesi ve JWT secret'ını kendinize göre ayarlayın (bu dosya `.gitignore`'dadır, repoda yer almaz).
+Set your connection string and JWT secret in `appsettings.Development.json` (this file is gitignored and not part of the repo).
 
-### 3. AI Servisi (Python)
+### 3. AI Service (Python)
 
 ```bash
 cd ai-service
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env   # ANTHROPIC_API_KEY ve VOYAGE_API_KEY'i girin
+cp .env.example .env   # add your ANTHROPIC_API_KEY and VOYAGE_API_KEY
 uvicorn main:app --reload --port 8000
 ```
 
@@ -123,22 +125,22 @@ npm install
 npm run dev
 ```
 
-Uygulama varsayılan olarak `http://localhost:5173` üzerinde açılır.
+The app runs at `http://localhost:5173` by default.
 
-## Yol Haritası
+## Roadmap
 
-Proje adım adım (küçük, doğrulanmış commit'lerle) geliştiriliyor. Tamamlanan ana aşamalar:
+The project is being built step by step, with small, verified commits. Main milestones completed so far:
 
-- [x] Kimlik doğrulama (JWT, kayıt/giriş)
-- [x] Sohbet ve mesaj yönetimi
-- [x] Claude API entegrasyonu, çoklu-tur konuşma geçmişi
-- [x] Doküman yükleme, metin çıkarma ve chunk'lama
-- [x] Voyage AI embedding + pgvector entegrasyonu
-- [x] Uçtan uca RAG akışı
-- [x] Tool calling ile otomatik destek talebi oluşturma
-- [ ] Aynı RAG akışının LangChain ile yeniden yazılıp karşılaştırılması
-- [ ] Docker Compose ile tüm sistemin tek komutla paketlenmesi
+- [x] Authentication (JWT, register/login)
+- [x] Conversation and message management
+- [x] Claude API integration, multi-turn conversation history
+- [x] Document upload, text extraction, and chunking
+- [x] Voyage AI embeddings + pgvector integration
+- [x] End-to-end RAG pipeline
+- [x] Tool calling for automatic support ticket creation
+- [ ] Rewriting the same RAG pipeline with LangChain for comparison
+- [ ] Packaging the whole system with Docker Compose
 
-## Lisans
+## License
 
-Bu proje bir staj çalışması kapsamında geliştirilmiştir.
+This project was built as part of a software internship.
