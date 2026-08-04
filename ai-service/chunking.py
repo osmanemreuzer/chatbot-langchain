@@ -1,4 +1,4 @@
-def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+def chunk_text(text: str, chunk_size: int = 1500, overlap: int = 150) -> list[str]:
     chunks = []
     step = chunk_size - overlap
     for start in range(0, len(text), step):
