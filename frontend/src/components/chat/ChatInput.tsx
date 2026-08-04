@@ -55,40 +55,42 @@ export default function ChatInput({ onSend, disabled }: Props) {
 
   return (
     <div className="chat-input-area">
-      <div className="chat-input-box">
-        <input
-          ref={fileInputRef}
-          type="file"
-          hidden
-          onChange={handleFileChange}
-        />
-        <button
-          className="btn-emoji"
-          title="Dosya Ekle"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-        >
-          <Paperclip size={22} />
-        </button>
-        <textarea
-          ref={textareaRef}
-          className="chat-input"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Mesaj yaz..."
-          rows={1}
-          disabled={disabled}
-        />
+      <div className="chat-input-inner">
+        <div className="chat-input-box">
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            onChange={handleFileChange}
+          />
+          <button
+            className="btn-emoji"
+            title="Dosya Ekle"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+          >
+            <Paperclip size={19} />
+          </button>
+          <textarea
+            ref={textareaRef}
+            className="chat-input"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Mesaj yaz..."
+            rows={1}
+            disabled={disabled}
+          />
+          <button
+            className="btn-send"
+            onClick={handleSend}
+            disabled={disabled || !value.trim()}
+            title="Gönder"
+          >
+            <Send size={17} />
+          </button>
+        </div>
       </div>
-      <button
-        className="btn-send"
-        onClick={handleSend}
-        disabled={disabled || !value.trim()}
-        title="Gönder"
-      >
-        <Send size={20} />
-      </button>
     </div>
   );
 }

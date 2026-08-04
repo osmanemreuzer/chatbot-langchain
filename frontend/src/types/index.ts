@@ -38,3 +38,8 @@ export interface DocumentItem {
   sizeBytes: number;
   createdAt: string;
 }
+
+export interface SuggestedQuestion {
+  title: string;
+  question: string;
+}

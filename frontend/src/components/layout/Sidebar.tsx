@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Search, MessageCircle, Trash2, LogOut, Edit3, Bot, FileText } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, MessageSquare, Trash2, LogOut, Plus, FileText } from "lucide-react";
 import { getConversations, createConversation, deleteConversation } from "../../api/chat";
 import { authStore, useAuth } from "../../store/authStore";
 import type { Conversation } from "../../types";
@@ -24,6 +25,12 @@ export default function Sidebar({ activeId, onSelect }: Props) {
   const [search, setSearch] = useState("");
   const [showDocuments, setShowDocuments] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    authStore.logout();
+    navigate("/login", { replace: true });
+  };
 
   useEffect(() => {
     getConversations().then((r) => setConversations(r.data));
@@ -50,28 +57,18 @@ export default function Sidebar({ activeId, onSelect }: Props) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-header-left">
-          <div className="sidebar-avatar">{userInitial}</div>
-        </div>
-        <div className="sidebar-header-icons">
-          <button className="btn-icon" onClick={() => setShowDocuments(true)} title="Dokümanlar">
-            <FileText size={20} />
-          </button>
-          <button className="btn-icon" onClick={handleNew} title="Yeni Sohbet">
-            <Edit3 size={20} />
-          </button>
-          <button className="btn-icon" onClick={() => authStore.logout()} title="Çıkış Yap">
-            <LogOut size={20} />
-          </button>
-        </div>
+      <div className="sidebar-top">
+        <button className="sidebar-new-chat-btn" onClick={handleNew}>
+          <Plus size={17} />
+          Yeni Sohbet
+        </button>
       </div>
 
       {showDocuments && <DocumentsModal onClose={() => setShowDocuments(false)} />}
 
       <div className="sidebar-search">
         <div className="sidebar-search-input-wrap">
-          <Search size={16} />
+          <Search size={15} />
           <input
             className="sidebar-search-input"
             placeholder="Sohbet ara..."
@@ -81,9 +78,9 @@ export default function Sidebar({ activeId, onSelect }: Props) {
         </div>
       </div>
 
-      <nav className="sidebar-nav" style={{ position: "relative" }}>
+      <nav className="sidebar-nav">
         {filtered.length === 0 && (
-          <div style={{ padding: "24px 16px", textAlign: "center", color: "#8696a0", fontSize: 13 }}>
+          <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text-muted)", fontSize: 13 }}>
             {search ? "Sohbet bulunamadı" : "Henüz sohbet yok"}
           </div>
         )}
@@ -93,15 +90,12 @@ export default function Sidebar({ activeId, onSelect }: Props) {
             className={`sidebar-item ${activeId === c.id ? "active" : ""}`}
             onClick={() => onSelect(c.id, c.title)}
           >
-            <div className="conv-avatar">
-              <Bot size={24} />
-            </div>
+            <span className="conv-icon">
+              <MessageSquare size={16} />
+            </span>
             <div className="conv-info">
-              <div className="conv-info-top">
-                <span className="conv-name">{c.title || "Yeni Sohbet"}</span>
-                <span className="conv-time">{formatTime(c.updatedAt)}</span>
-              </div>
-              <div className="conv-preview">Sohbete devam et...</div>
+              <span className="conv-name">{c.title || "Yeni Sohbet"}</span>
+              <span className="conv-time">{formatTime(c.updatedAt)}</span>
             </div>
             <button
               className="conv-delete"
@@ -112,11 +106,22 @@ export default function Sidebar({ activeId, onSelect }: Props) {
             </button>
           </div>
         ))}
-
-        <button className="sidebar-new-btn" onClick={handleNew} title="Yeni Sohbet">
-          <MessageCircle size={24} />
-        </button>
       </nav>
+
+      <div className="sidebar-footer">
+        <div className="sidebar-user-row">
+          <div className="sidebar-avatar">{userInitial}</div>
+          <span className="sidebar-user-email">{user?.email}</span>
+        </div>
+        <div className="sidebar-header-icons">
+          <button className="btn-icon" onClick={() => setShowDocuments(true)} title="Dokümanlar">
+            <FileText size={18} />
+          </button>
+          <button className="btn-icon" onClick={handleLogout} title="Çıkış Yap">
+            <LogOut size={18} />
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }
