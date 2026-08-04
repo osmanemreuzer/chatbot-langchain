@@ -57,8 +57,6 @@ public class ConversationService : IConversationService
             conversation.Id, conversation.Title, conversation.CreatedAt, conversation.UpdatedAt, messages);
     }
 
-    private const string WelcomeMessage = "Merhaba, ben EE Asistanı. Size nasıl yardımcı olabilirim?";
-
     public async Task<ConversationDto> CreateConversationAsync(Guid userId, CreateConversationRequest request)
     {
         var conversation = new Conversation
@@ -68,13 +66,6 @@ public class ConversationService : IConversationService
         };
 
         await _conversationRepository.AddAsync(conversation);
-
-        await _conversationRepository.AddMessageAsync(new Message
-        {
-            ConversationId = conversation.Id,
-            Role = "assistant",
-            Content = WelcomeMessage
-        });
 
         return new ConversationDto(conversation.Id, conversation.Title, conversation.CreatedAt, conversation.UpdatedAt);
     }
