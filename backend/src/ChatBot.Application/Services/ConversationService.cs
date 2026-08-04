@@ -17,15 +17,18 @@ public class ConversationService : IConversationService
     private readonly IConversationRepository _conversationRepository;
     private readonly IAIService _aiService;
     private readonly IDocumentRepository _documentRepository;
+    private readonly ISupportTicketService _supportTicketService;
 
     public ConversationService(
         IConversationRepository conversationRepository,
         IAIService aiService,
-        IDocumentRepository documentRepository)
+        IDocumentRepository documentRepository,
+        ISupportTicketService supportTicketService)
     {
         _conversationRepository = conversationRepository;
         _aiService = aiService;
         _documentRepository = documentRepository;
+        _supportTicketService = supportTicketService;
     }
 
     public async Task<List<ConversationDto>> GetConversationsAsync(Guid userId)
@@ -110,15 +113,25 @@ public class ConversationService : IConversationService
 
         if (request.Role == "user")
         {
-            string replyContent;
+            AiReply aiReply;
             try
             {
                 var context = await BuildRagContextAsync(userId, request.Content);
-                replyContent = await _aiService.GetReplyAsync(request.Content, history, context);
+                aiReply = await _aiService.GetReplyAsync(request.Content, history, context);
             }
             catch (HttpRequestException)
             {
-                replyContent = "AI servisine şu anda ulaşılamıyor, lütfen daha sonra tekrar deneyin.";
+                aiReply = new AiReply("AI servisine şu anda ulaşılamıyor, lütfen daha sonra tekrar deneyin.", null);
+            }
+
+            var replyContent = aiReply.Reply;
+            if (aiReply.SupportTicketToolCall is { } ticketCall)
+            {
+                await _supportTicketService.CreateAsync( //gerçek tool burda çalışıyor.
+                    userId, conversation.Id, ticketCall.Title, ticketCall.Description);
+
+                replyContent =
+                    $"Destek talebiniz oluşturuldu: \"{ticketCall.Title}\". Ekibimiz en kısa sürede sizinle iletişime geçecek.";
             }
 
             var assistantMessage = new Message

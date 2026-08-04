@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from anthropic import Anthropic
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, ToolParam
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile
 from pydantic import BaseModel
@@ -46,8 +46,14 @@ class ChatRequest(BaseModel):
     history: list[HistoryMessage] = []  # bu sohbetteki önceki mesajlar
 
 
+class ToolCall(BaseModel):
+    name: str
+    input: dict
+
+
 class ChatResponse(BaseModel):
     reply: str
+    toolCall: ToolCall | None = None
 
 
 class EmbedQueryRequest(BaseModel):
@@ -67,6 +73,32 @@ class ChunkDto(BaseModel):
 class ProcessDocumentResponse(BaseModel):
     chunkCount: int
     chunks: list[ChunkDto]
+
+
+TOOLS: list[ToolParam] = [
+    {
+        "name": "create_support_ticket",
+        "description": (
+            "Kullanıcı açıkça bir teknik destek talebi/arıza bildirimi oluşturulmasını "
+            "istediğinde çağır (ör. 'bir talep aç', 'destek ekibine iletir misin', "
+            "'servis çağırın'). Kullanıcı sadece bilgi/tavsiye istiyorsa ÇAĞIRMA."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "Talebin kısa başlığı (ör. 'RO sisteminde basınç düşüşü')",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Sohbetten çıkarılan sorunun özet açıklaması",
+                },
+            },
+            "required": ["title", "description"],
+        },
+    }
+]
 
 
 @app.get("/health")
@@ -92,12 +124,20 @@ def chat(request: ChatRequest):
 
     response = client.messages.create(
         model="claude-sonnet-5",
-        max_tokens=1024,
+        max_tokens=2048,
         system=system,
         messages=messages,
+        tools=TOOLS,
     )
-    text_block = next(block for block in response.content if block.type == "text")
-    return ChatResponse(reply=text_block.text)
+
+    text_block = next((b for b in response.content if b.type == "text"), None)
+    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+
+    tool_call = None
+    if tool_use_block is not None:
+        tool_call = ToolCall(name=tool_use_block.name, input=tool_use_block.input)
+
+    return ChatResponse(reply=text_block.text if text_block else "", toolCall=tool_call)
 
 
 @app.post("/embeddings/query", response_model=EmbedQueryResponse)

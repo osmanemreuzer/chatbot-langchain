@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ChatBot.Application.DTOs;
 using ChatBot.Application.Interfaces;
@@ -14,7 +15,7 @@ public class AIService : IAIService
         _httpClient = httpClient;
     }
 
-    public async Task<string> GetReplyAsync(string message, IReadOnlyList<ChatHistoryMessage> history, string? context = null)
+    public async Task<AiReply> GetReplyAsync(string message, IReadOnlyList<ChatHistoryMessage> history, string? context = null)
     {
         var request = new ChatRequest(
             message,
@@ -25,7 +26,16 @@ public class AIService : IAIService
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<ChatResponse>();
-        return result?.Reply ?? string.Empty;
+
+        SupportTicketToolCall? toolCall = null;
+        if (result?.ToolCall is { Name: "create_support_ticket" } tc)
+        {
+            toolCall = new SupportTicketToolCall(
+                tc.Input.GetProperty("title").GetString() ?? string.Empty,
+                tc.Input.GetProperty("description").GetString() ?? string.Empty);
+        }
+
+        return new AiReply(result?.Reply ?? string.Empty, toolCall);
     }
 
     public async Task<float[]> EmbedQueryAsync(string text)
@@ -46,7 +56,13 @@ public class AIService : IAIService
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string Content);
 
-    private record ChatResponse([property: JsonPropertyName("reply")] string Reply);
+    private record ChatResponse(
+        [property: JsonPropertyName("reply")] string Reply,
+        [property: JsonPropertyName("toolCall")] ToolCallDto? ToolCall);
+
+    private record ToolCallDto(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("input")] JsonElement Input);
 
     private record EmbedQueryRequest([property: JsonPropertyName("text")] string Text);
 

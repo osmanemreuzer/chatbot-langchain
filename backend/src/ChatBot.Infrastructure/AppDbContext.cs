@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -62,6 +63,21 @@ public class AppDbContext : DbContext
             chunk.HasOne<Document>()
                 .WithMany()
                 .HasForeignKey(c => c.DocumentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SupportTicket>(ticket =>
+        {
+            ticket.HasIndex(t => t.UserId);
+
+            ticket.HasOne<User>()
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            ticket.HasOne<Conversation>()
+                .WithMany()
+                .HasForeignKey(t => t.ConversationId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
