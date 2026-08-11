@@ -3,20 +3,27 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
-from anthropic import Anthropic
-from anthropic.types import MessageParam, ToolParam
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
+from langchain_anthropic import ChatAnthropic
+from langchain_classic.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import tool
 from pydantic import BaseModel
 
-from chunking import chunk_text
-from embedding import embed_texts
-from extraction import extract_text
+import vectorstore
+from chunking import chunk_documents
+from extraction import load_document
 
 load_dotenv()
 
 app = FastAPI(title="ChatBot AI Service")
-client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+# create_tool_calling_agent, llm.bind_tools()'a ihtiyaç duyuyor; .with_retry() bunu
+# saran farklı bir Runnable tipi döndürüp bind_tools'u kaybettiriyor. Bu yüzden retry'ı
+# ham llm'e değil, aşağıda kurulan agent_executor'a ekliyoruz.
+llm = ChatAnthropic(model="claude-sonnet-5", max_tokens=2048)
 
 SYSTEM_PROMPT = """Sen Çevre Mühendisliği Teknik Asistanısın. Uzmanlık alanın: RO ve NF membran sistemlerinin tasarımı, su kimyası, ön arıtma, kabuk/kirlenme kontrolü, sistem işletmesi, temizlik/sanitizasyon, arıza giderme ve bakım.
 
@@ -35,6 +42,36 @@ Konuşma tarzın:
 - Kimyasal kullanımı, yüksek basınç gibi konularda güvenlik uyarısını doğal şekilde cümle içine yerleştir.
 - Kullanıcı hangi dilde yazarsa o dilde cevap ver."""
 
+AGENT_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", "{system_text}"),
+    MessagesPlaceholder("chat_history"),
+    ("human", "{input}"),
+    MessagesPlaceholder("agent_scratchpad"),
+])
+
+
+@tool
+def create_support_ticket(title: str, description: str) -> str:
+    """Kullanıcı açıkça bir teknik destek talebi/arıza bildirimi oluşturulmasını
+    istediğinde çağır (ör. 'bir talep aç', 'destek ekibine iletir misin',
+    'servis çağırın'). Kullanıcı sadece bilgi/tavsiye istiyorsa ÇAĞIRMA.
+
+    Args:
+        title: Talebin kısa başlığı (ör. 'RO sisteminde basınç düşüşü')
+        description: Sohbetten çıkarılan sorunun özet açıklaması
+    """
+    # Gerçek ticket kaydı burada oluşmuyor: Python'un kullanıcı/conversation DB'sine
+    # erişimi yok. Bu çağrı sadece niyeti/parametreleri çıkarır; .NET, intermediate_steps
+    # üzerinden bu bilgiyi okuyup asıl kaydı kendi DB'sinde oluşturur.
+    return f"'{title}' başlıklı destek talebi oluşturma isteği alındı."
+
+
+TOOLS = [create_support_ticket]
+_agent = create_tool_calling_agent(llm, TOOLS, AGENT_PROMPT)
+_agent_executor = AgentExecutor(
+    agent=_agent, tools=TOOLS, return_intermediate_steps=True
+).with_retry()
+
 
 class HistoryMessage(BaseModel):
     role: Literal["user", "assistant"]
@@ -43,7 +80,7 @@ class HistoryMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    context: str | None = None  # RAG: soruyla ilgili doküman bölümleri (.NET dolduruyor)
+    userId: str
     history: list[HistoryMessage] = []  # bu sohbetteki önceki mesajlar
 
 
@@ -57,117 +94,100 @@ class ChatResponse(BaseModel):
     toolCall: ToolCall | None = None
 
 
-class EmbedQueryRequest(BaseModel):
-    text: str
-
-
-class EmbedQueryResponse(BaseModel):
-    embedding: list[float]
-
-
-class ChunkDto(BaseModel):
-    index: int
-    content: str
-    embedding: list[float]
-
-
 class ProcessDocumentResponse(BaseModel):
     chunkCount: int
-    chunks: list[ChunkDto]
 
 
-TOOLS: list[ToolParam] = [
-    {
-        "name": "create_support_ticket",
-        "description": (
-            "Kullanıcı açıkça bir teknik destek talebi/arıza bildirimi oluşturulmasını "
-            "istediğinde çağır (ör. 'bir talep aç', 'destek ekibine iletir misin', "
-            "'servis çağırın'). Kullanıcı sadece bilgi/tavsiye istiyorsa ÇAĞIRMA."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "title": {
-                    "type": "string",
-                    "description": "Talebin kısa başlığı (ör. 'RO sisteminde basınç düşüşü')",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Sohbetten çıkarılan sorunun özet açıklaması",
-                },
-            },
-            "required": ["title", "description"],
-        },
-    }
-]
+def _extract_reply_text(output: str | list) -> str:
+    # Claude bazen (extended thinking ile) content'i düz string değil, "thinking" +
+    # "text" bloklarından oluşan bir liste olarak döndürüyor — sadece text'i alıyoruz.
+    if isinstance(output, str):
+        return output
+    return "".join(
+        block.get("text", "")
+        for block in output
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+def _to_langchain_messages(history: list[HistoryMessage]) -> list[BaseMessage]:
+    return [
+        HumanMessage(content=h.content) if h.role == "user" else AIMessage(content=h.content)
+        for h in history
+    ]
+
+
+def _build_context(user_id: str, message: str) -> str | None:
+    # Arama, sohbet gecmisine bakmadan dogrudan son mesajla yapilir - ekstra bir
+    # "sorguyu yeniden yaz" LLM turu (contextualize) eklemiyoruz. Bunun bedeli,
+    # baglama muhtac takip sorularinda ("peki ya basinci duserse?") aramanin
+    # zayif kalabilmesi; karsiligi ise mesaj basina bir tam LLM turu daha az gecikme.
+    retriever = vectorstore.get_retriever(user_id, k=3)
+    docs = retriever.invoke(message)
+
+    if not docs:
+        return None
+
+    return "\n\n---\n\n".join(d.page_content for d in docs)
 
 
 @app.get("/health")
-def health():  #FastAPI ayakta mı kontrolü
+def health():  # FastAPI ayakta mı kontrolü
     return {"status": "ok"}
 
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    system = SYSTEM_PROMPT
-    if request.context:
-        system += (
+    chat_history = _to_langchain_messages(request.history)
+    context = _build_context(request.userId, request.message)
+
+    system_text = SYSTEM_PROMPT
+    if context:
+        system_text += (
             "\n\nAşağıda şirket dokümanlarından, kullanıcının sorusuyla ilgili "
             "olabilecek bölümler var. Cevabını öncelikle bu bölümlere dayandır. "
             "Cevap bu bölümlerde yoksa bilgi uydurma; elinde bu konuda bilgi "
-            "olmadığını söyle.\n\n--- DOKÜMAN BÖLÜMLERİ ---\n" + request.context
+            "olmadığını söyle.\n\n--- DOKÜMAN BÖLÜMLERİ ---\n" + context
         )
 
-    messages: list[MessageParam] = [
-        {"role": h.role, "content": h.content} for h in request.history
-    ]
-    messages.append({"role": "user", "content": request.message})
-
-    response = client.messages.create(
-        model="claude-sonnet-5",
-        max_tokens=2048,
-        system=system,
-        messages=messages,
-        tools=TOOLS,
-    )
-
-    text_block = next((b for b in response.content if b.type == "text"), None)
-    tool_use_block = next((b for b in response.content if b.type == "tool_use"), None)
+    result = _agent_executor.invoke({
+        "system_text": system_text,
+        "input": request.message,
+        "chat_history": chat_history,
+    })
 
     tool_call = None
-    if tool_use_block is not None:
-        tool_call = ToolCall(name=tool_use_block.name, input=tool_use_block.input)
+    for action, _observation in result.get("intermediate_steps", []):
+        if action.tool == "create_support_ticket":
+            tool_call = ToolCall(name=action.tool, input=action.tool_input)
+            break
 
-    return ChatResponse(reply=text_block.text if text_block else "", toolCall=tool_call)
-
-
-@app.post("/embeddings/query", response_model=EmbedQueryResponse)
-def embed_query(request: EmbedQueryRequest):
-    # Kullanıcı sorusu tek metin; input_type="query" ile embed edilir
-    # (chunk'lar "document" ile embed edilmişti — asimetrik arama).
-    [embedding] = embed_texts([request.text], input_type="query")
-    return EmbedQueryResponse(embedding=embedding)
+    return ChatResponse(reply=_extract_reply_text(result["output"]), toolCall=tool_call)
 
 
 @app.post("/documents/process", response_model=ProcessDocumentResponse)
-async def process_document(file: UploadFile = File(...)):
+async def process_document(
+    file: UploadFile = File(...),
+    document_id: str = Form(...),
+    user_id: str = Form(...),
+):
     suffix = Path(file.filename or "").suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
 
     try:
-        text = extract_text(tmp_path)
-        chunks = chunk_text(text)
+        docs = load_document(tmp_path)
+        chunks = chunk_documents(docs)
     finally:
         os.remove(tmp_path)
 
-    embeddings = embed_texts(chunks) if chunks else []
+    chunk_count = vectorstore.add_chunks(document_id, user_id, chunks)
 
-    return ProcessDocumentResponse(
-        chunkCount=len(chunks),
-        chunks=[
-            ChunkDto(index=i, content=c, embedding=e)
-            for i, (c, e) in enumerate(zip(chunks, embeddings))
-        ],
-    )
+    return ProcessDocumentResponse(chunkCount=chunk_count)
+
+
+@app.delete("/documents/{document_id}")
+def delete_document(document_id: str):
+    vectorstore.delete_document(document_id)
+    return {"status": "deleted"}

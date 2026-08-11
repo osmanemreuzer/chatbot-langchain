@@ -6,8 +6,6 @@ namespace ChatBot.Application.Services;
 
 public class ConversationService : IConversationService
 {
-    private const int RagChunkLimit = 3;
-
     // Claude'a gönderilen geçmiş, token maliyetini sınırlamak için son N mesajla
     // kesiliyor. Çift olmak zorunda: mesajlar user/assistant sırasıyla dönüşümlü
     // dizildiğinden tek sayı kesim dizinin assistant ile
@@ -16,18 +14,15 @@ public class ConversationService : IConversationService
 
     private readonly IConversationRepository _conversationRepository;
     private readonly IAIService _aiService;
-    private readonly IDocumentRepository _documentRepository;
     private readonly ISupportTicketService _supportTicketService;
 
     public ConversationService(
         IConversationRepository conversationRepository,
         IAIService aiService,
-        IDocumentRepository documentRepository,
         ISupportTicketService supportTicketService)
     {
         _conversationRepository = conversationRepository;
         _aiService = aiService;
-        _documentRepository = documentRepository;
         _supportTicketService = supportTicketService;
     }
 
@@ -107,8 +102,7 @@ public class ConversationService : IConversationService
             AiReply aiReply;
             try
             {
-                var context = await BuildRagContextAsync(userId, request.Content);
-                aiReply = await _aiService.GetReplyAsync(request.Content, history, context);
+                aiReply = await _aiService.GetReplyAsync(userId, request.Content, history);
             }
             catch (HttpRequestException)
             {
@@ -140,26 +134,6 @@ public class ConversationService : IConversationService
         }
 
         return createdMessages;
-    }
-
-    // Soruyu embed edip kullanıcının dokümanlarındaki en yakın chunk'ları context olarak birleştirir.
-    // Doküman yoksa null döner (düz sohbet); embedding hatası düz sohbete düşürülür, akışı kırmaz.
-    private async Task<string?> BuildRagContextAsync(Guid userId, string question)
-    {
-        List<DocumentChunk> chunks;
-        try
-        {
-            var queryEmbedding = await _aiService.EmbedQueryAsync(question);//Kullanıcının sorusunu bir embedding vektörüne çeviriyor
-            chunks = await _documentRepository.GetNearestChunksAsync(userId, queryEmbedding, RagChunkLimit);//O vektöre anlamca en yakın 3 doküman parçasını veritabanından (muhtemelen vektör benzerliği ile) çekiyor
-        }
-        catch (HttpRequestException)
-        {
-            return null;
-        }
-
-        return chunks.Count == 0
-            ? null
-            : string.Join("\n\n---\n\n", chunks.Select(c => c.Content));
     }
 
     public async Task<bool> DeleteConversationAsync(Guid userId, Guid conversationId)

@@ -4,6 +4,5 @@ namespace ChatBot.Application.Interfaces;
 
 public interface IAIService
 {
-    Task<AiReply> GetReplyAsync(string message, IReadOnlyList<ChatHistoryMessage> history, string? context = null);
-    Task<float[]> EmbedQueryAsync(string text);
+    Task<AiReply> GetReplyAsync(Guid userId, string message, IReadOnlyList<ChatHistoryMessage> history);
 }

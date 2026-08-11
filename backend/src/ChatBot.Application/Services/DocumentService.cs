@@ -2,7 +2,6 @@ using ChatBot.Application.DTOs;
 using ChatBot.Application.Interfaces;
 using ChatBot.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Pgvector;
 
 namespace ChatBot.Application.Services;
 
@@ -68,22 +67,8 @@ public class DocumentService : IDocumentService
         try
         {
             await using var savedFileStream = File.OpenRead(document.StoragePath);
-            var processedChunks = await _documentProcessingService.ProcessAsync(fileName, contentType, savedFileStream);
-
-            var chunks = processedChunks
-                .Select((chunk, index) => new DocumentChunk
-                {
-                    DocumentId = document.Id,
-                    ChunkIndex = index,
-                    Content = chunk.Content,
-                    Embedding = new Vector(chunk.Embedding)
-                })
-                .ToList();
-
-            if (chunks.Count > 0)
-            {
-                await _documentRepository.AddChunksAsync(chunks);
-            }
+            await _documentProcessingService.ProcessAsync(
+                document.Id, userId, fileName, contentType, savedFileStream);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -106,6 +91,20 @@ public class DocumentService : IDocumentService
         if (document is null || document.UserId != userId)
         {
             return false;
+        }
+
+        try
+        {
+            await _documentProcessingService.DeleteAsync(document.Id);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // AI servisine ulaşılamazsa chunk'lar Postgres'te öksüz kalabilir, ama dokümanın
+            // kendisi silinebilmeli - upload'taki tolerans deseniyle aynı.
+            _logger.LogError(
+                ex,
+                "Doküman {DocumentId} siliniyor ama AI servisindeki chunk'lar temizlenemedi.",
+                document.Id);
         }
 
         await _fileStorageService.DeleteAsync(document.StoragePath);

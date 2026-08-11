@@ -13,7 +13,9 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2" />
-    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
+    <!-- Uygulama kodu artık vector tipini kullanmıyor (RAG Python/LangChain'e taşındı);
+         paket sadece eski AddChunkEmbedding migration'ının derlenebilmesi için burada. -->
+    <PackageReference Include="Pgvector" Version="0.3.2" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -13,7 +13,6 @@ public class AppDbContext : DbContext
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<Document> Documents => Set<Document>();
-    public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
     public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -49,20 +48,6 @@ public class AppDbContext : DbContext
             document.HasOne<User>()
                 .WithMany()
                 .HasForeignKey(d => d.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<DocumentChunk>(chunk =>
-        {
-            chunk.HasIndex(c => c.DocumentId);
-
-            // voyage-4-lite modelinin ürettiği vektör boyutu 1024
-            chunk.Property(c => c.Embedding)
-                .HasColumnType("vector(1024)");
-
-            chunk.HasOne<Document>()
-                .WithMany()
-                .HasForeignKey(c => c.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

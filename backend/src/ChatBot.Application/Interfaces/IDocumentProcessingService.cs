@@ -1,8 +1,7 @@
-using ChatBot.Application.DTOs;
-
 namespace ChatBot.Application.Interfaces;
 
 public interface IDocumentProcessingService
 {
-    Task<List<ProcessedChunk>> ProcessAsync(string fileName, string contentType, Stream content);
+    Task<int> ProcessAsync(Guid documentId, Guid userId, string fileName, string contentType, Stream content);
+    Task DeleteAsync(Guid documentId);
 }

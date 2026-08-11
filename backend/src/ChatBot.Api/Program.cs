@@ -9,7 +9,6 @@ using ChatBot.Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,9 +42,7 @@ builder.Services.AddHttpClient<IDocumentProcessingService, DocumentProcessingSer
     client.Timeout = TimeSpan.FromMinutes(5);
 });
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("ChatBotDb"),
-        npgsqlOptions => npgsqlOptions.UseVector()));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("ChatBotDb")));
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(FrontendCorsPolicy, policy =>
