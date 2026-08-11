@@ -1,8 +1,10 @@
 *[English](README.md) | Türkçe*
 
-# EE Asistanı — RAG Tabanlı Teknik Destek Chatbotu
+# EE Asistanı — LangChain Tabanlı RAG Teknik Destek Chatbotu
 
 Çevre mühendisliği / su arıtma alanında (RO ve NF membran sistemleri) çalışan teknik ekiplere yardımcı olmak için geliştirilen, doküman tabanlı (RAG) bir yapay zeka asistanı. Kullanıcılar teknik kılavuz dokümanlarını yükler, asistan bu dokümanlardan öğrendiği bilgilerle sorulara cevap verir ve gerektiğinde otomatik olarak destek talebi (ticket) açabilir.
+
+AI servisi **LangChain** üzerine kurulu: sohbet + tool calling akışını bir `create_tool_calling_agent` yürütüyor, retriever tarafını `langchain-postgres` ile `PGVector` karşılıyor, chunk'lama ise `RecursiveCharacterTextSplitter` ile yapılıyor — daha önce Anthropic SDK'sını doğrudan çağıran elle yazılmış RAG akışının yerini bu aldı.
 
 Bu proje, full-stack bir yazılım stajı kapsamında sıfırdan, adım adım geliştirilmiştir.
 
@@ -10,10 +12,10 @@ Bu proje, full-stack bir yazılım stajı kapsamında sıfırdan, adım adım ge
 
 - 🔐 **JWT tabanlı kimlik doğrulama** — kayıt/giriş, korumalı endpoint'ler
 - 💬 **Çoklu sohbet yönetimi** — birden fazla konuşma, geçmişe dönük mesaj listesi, çoklu-tur (multi-turn) bağlam
-- 📄 **Doküman yükleme ve işleme** — PDF / DOCX / TXT / MD dosyalarından metin çıkarma, chunk'lama ve embedding üretimi
-- 🔎 **RAG (Retrieval-Augmented Generation)** — kullanıcı sorusu embed edilip pgvector ile en alakalı doküman parçaları bulunur, Claude'a bağlam olarak verilir
+- 📄 **Doküman yükleme ve işleme** — LangChain doküman loader'ları ve `RecursiveCharacterTextSplitter` ile PDF / DOCX / TXT / MD dosyalarından metin çıkarma, chunk'lama ve embedding üretimi
+- 🔎 **RAG (Retrieval-Augmented Generation)** — kullanıcı sorusu, LangChain `PGVector` retriever'ı (MMR arama) üzerinden en alakalı doküman parçalarıyla eşleştirilir, Claude'a bağlam olarak verilir
 - 🎯 **Kapsam kontrolü** — asistan yalnızca kendi uzmanlık alanındaki sorulara cevap verir, alan dışı sorularda (matematik, genel kültür vb.) nazikçe reddeder
-- 🛠️ **Tool calling ile otomatik destek talebi** — kullanıcı açıkça bir arıza/destek talebi oluşturulmasını istediğinde, Claude ilgili tool'u çağırır ve sistem otomatik olarak ticket kaydı oluşturur
+- 🛠️ **Agent tabanlı tool calling ile otomatik destek talebi** — bir LangChain `AgentExecutor`, kullanıcı açıkça bir arıza/destek talebi oluşturulmasını istediğinde Claude'un `create_support_ticket` tool'unu çağırmasını sağlar ve sistem otomatik olarak ticket kaydı oluşturur
 - 🎨 **Modern sohbet arayüzü** — ChatGPT/Claude tarzında, doküman-özel öneri kartları, gerçek zamanlı "yazıyor..." göstergesi
 
 ## Mimari
@@ -31,27 +33,31 @@ flowchart LR
         INFRA[Infrastructure: EF Core / Repository]
     end
 
-    subgraph AIService["Python FastAPI — AI Servisi"]
+    subgraph AIService["Python FastAPI — AI Servisi (LangChain)"]
         CHAT[/chat/]
-        EMBED[/embeddings/query/]
         PROC[/documents/process/]
+        AGENT[["AgentExecutor\n(create_tool_calling_agent)"]]
+        RETRIEVER[["PGVector retriever\n(MMR arama)"]]
+        SPLITTER[["RecursiveCharacterTextSplitter"]]
+        CHAT --> AGENT
+        AGENT --> RETRIEVER
+        PROC --> SPLITTER --> RETRIEVER
     end
 
     DB[(PostgreSQL + pgvector)]
-    CLAUDE[[Anthropic Claude API]]
-    VOYAGE[[Voyage AI Embeddings]]
+    CLAUDE[[Anthropic Claude — langchain-anthropic üzerinden]]
+    VOYAGE[[Voyage AI Embeddings — langchain-voyageai üzerinden]]
 
     UI -->|REST + JWT| API
     API --> APP --> INFRA --> DB
     APP -->|HTTP| CHAT
-    APP -->|HTTP| EMBED
     APP -->|HTTP| PROC
-    CHAT --> CLAUDE
-    EMBED --> VOYAGE
-    PROC --> VOYAGE
+    AGENT --> CLAUDE
+    RETRIEVER --> DB
+    RETRIEVER --> VOYAGE
 ```
 
-Sorumluluk paylaşımı net bir sınırla ayrılmıştır: **.NET** kimlik doğrulama, veri kalıcılığı, iş kuralları ve vektör benzerlik aramasını (pgvector) yönetir; **Python** yalnızca AI/ML işlerini (LLM çağrısı, embedding üretimi, doküman parçalama) yapar ve HTTP üzerinden .NET'e hizmet verir.
+Sorumluluk paylaşımı net bir sınırla ayrılmıştır: **.NET** kimlik doğrulama, veri kalıcılığı, iş kuralları ve sohbet/ticket durumunu yönetir; **Python** yalnızca AI/ML işlerini yapar — LangChain agent akışı, retrieval, embedding üretimi ve doküman parçalama — ve HTTP üzerinden .NET'e hizmet verir.
 
 ## Teknoloji Yığını
 
@@ -59,7 +65,7 @@ Sorumluluk paylaşımı net bir sınırla ayrılmıştır: **.NET** kimlik doğr
 |---|---|
 | **Frontend** | React 19, TypeScript, Vite, React Router, Axios, react-markdown |
 | **Backend** | .NET 10 (ASP.NET Core Web API), Clean Architecture (Domain / Application / Infrastructure / Api), Entity Framework Core, JWT Bearer Auth, BCrypt |
-| **AI Servisi** | Python, FastAPI, Anthropic SDK (Claude), Voyage AI (embeddings), pypdf / python-docx (doküman çıkarma) |
+| **AI Servisi** | Python, FastAPI, **LangChain** (`langchain-core`, `langchain-classic` agent'lar, `langchain-text-splitters`, `langchain-community` loader'lar), `langchain-anthropic` (Claude), `langchain-postgres` (PGVector), `langchain-voyageai` (embedding), pypdf / python-docx (doküman çıkarma) |
 | **Veritabanı** | PostgreSQL 16 + pgvector (vektör benzerlik araması) |
 | **Altyapı** | Docker Compose (PostgreSQL) |
 
@@ -78,7 +84,12 @@ chatbot-app/
 │       ├── ChatBot.Application/     # Servisler, DTO'lar, interface'ler
 │       ├── ChatBot.Infrastructure/  # EF Core, repository implementasyonları, AI servis istemcisi
 │       └── ChatBot.Api/             # Controller'lar, DI konfigürasyonu
-├── ai-service/          # Python FastAPI — Claude entegrasyonu, embedding, chunking
+├── ai-service/          # Python FastAPI + LangChain
+│   ├── main.py              # FastAPI route'ları, LangChain agent + tool calling kurulumu
+│   ├── vectorstore.py        # PGVector store/retriever (MMR arama, kullanıcı bazlı filtreleme)
+│   ├── chunking.py           # RecursiveCharacterTextSplitter
+│   ├── extraction.py         # Doküman loader'ları (PDF/DOCX/TXT/MD)
+│   └── rate_limit_retry.py   # Voyage AI rate-limit retry mantığı
 └── docker-compose.yml   # PostgreSQL + pgvector
 ```
 
@@ -138,7 +149,7 @@ Proje adım adım (küçük, doğrulanmış commit'lerle) geliştiriliyor. Tamam
 - [x] Voyage AI embedding + pgvector entegrasyonu
 - [x] Uçtan uca RAG akışı
 - [x] Tool calling ile otomatik destek talebi oluşturma
-- [ ] Aynı RAG akışının LangChain ile yeniden yazılıp karşılaştırılması
+- [x] RAG akışının LangChain ile yeniden yazılması (agent, PGVector retriever, text splitter, doküman loader'ları)
 - [ ] Docker Compose ile tüm sistemin tek komutla paketlenmesi
 
 ## Lisans

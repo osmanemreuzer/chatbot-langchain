@@ -1,8 +1,10 @@
 *English | [Türkçe](README.tr.md)*
 
-# EE Assistant — RAG-Based Technical Support Chatbot
+# EE Assistant — LangChain-Powered RAG Technical Support Chatbot
 
 An AI assistant built for technical teams working in environmental engineering / water treatment (RO and NF membrane systems). Users upload technical guideline documents, and the assistant answers questions grounded in that knowledge (RAG) — and can automatically open a support ticket when needed.
+
+The AI service is built on **LangChain**: a `create_tool_calling_agent` drives the chat + tool-calling loop, `PGVector` (via `langchain-postgres`) backs the retriever, and `RecursiveCharacterTextSplitter` handles chunking — replacing an earlier hand-rolled RAG pipeline that called the Anthropic SDK directly.
 
 This project was built from scratch, step by step, as part of a full-stack software internship.
 
@@ -10,10 +12,10 @@ This project was built from scratch, step by step, as part of a full-stack softw
 
 - 🔐 **JWT-based authentication** — register/login, protected endpoints
 - 💬 **Multi-conversation management** — multiple chats, persisted message history, multi-turn context
-- 📄 **Document upload & processing** — text extraction, chunking, and embedding generation for PDF / DOCX / TXT / MD files
-- 🔎 **RAG (Retrieval-Augmented Generation)** — the user's question is embedded and matched against document chunks via pgvector, which are then passed to Claude as context
+- 📄 **Document upload & processing** — text extraction, chunking, and embedding generation for PDF / DOCX / TXT / MD files, via LangChain document loaders and `RecursiveCharacterTextSplitter`
+- 🔎 **RAG (Retrieval-Augmented Generation)** — the user's question is matched against document chunks through a LangChain `PGVector` retriever (MMR search) and passed to Claude as context
 - 🎯 **Scope control** — the assistant only answers questions within its domain and politely declines out-of-scope ones (math, general knowledge, etc.)
-- 🛠️ **Tool calling for automatic support tickets** — when a user explicitly asks for a support/service request, Claude calls a tool and the backend automatically creates a ticket
+- 🛠️ **Agentic tool calling for automatic support tickets** — a LangChain `AgentExecutor` lets Claude call a `create_support_ticket` tool when a user explicitly asks for a support/service request, and the backend automatically creates a ticket
 - 🎨 **Modern chat UI** — ChatGPT/Claude-style interface with document-specific suggestion cards and a real-time "typing..." indicator
 
 ## Architecture
@@ -31,27 +33,31 @@ flowchart LR
         INFRA[Infrastructure: EF Core / Repositories]
     end
 
-    subgraph AIService["Python FastAPI — AI Service"]
+    subgraph AIService["Python FastAPI — AI Service (LangChain)"]
         CHAT[/chat/]
-        EMBED[/embeddings/query/]
         PROC[/documents/process/]
+        AGENT[["AgentExecutor\n(create_tool_calling_agent)"]]
+        RETRIEVER[["PGVector retriever\n(MMR search)"]]
+        SPLITTER[["RecursiveCharacterTextSplitter"]]
+        CHAT --> AGENT
+        AGENT --> RETRIEVER
+        PROC --> SPLITTER --> RETRIEVER
     end
 
     DB[(PostgreSQL + pgvector)]
-    CLAUDE[[Anthropic Claude API]]
-    VOYAGE[[Voyage AI Embeddings]]
+    CLAUDE[[Anthropic Claude — via langchain-anthropic]]
+    VOYAGE[[Voyage AI Embeddings — via langchain-voyageai]]
 
     UI -->|REST + JWT| API
     API --> APP --> INFRA --> DB
     APP -->|HTTP| CHAT
-    APP -->|HTTP| EMBED
     APP -->|HTTP| PROC
-    CHAT --> CLAUDE
-    EMBED --> VOYAGE
-    PROC --> VOYAGE
+    AGENT --> CLAUDE
+    RETRIEVER --> DB
+    RETRIEVER --> VOYAGE
 ```
 
-Responsibilities are cleanly split: **.NET** owns authentication, data persistence, business rules, and vector similarity search (pgvector); **Python** handles AI/ML work only (LLM calls, embedding generation, document chunking) and serves it to .NET over HTTP.
+Responsibilities are cleanly split: **.NET** owns authentication, data persistence, business rules, and conversation/ticket state; **Python** handles AI/ML work only — the LangChain agent loop, retrieval, embeddings, and document chunking — and serves it to .NET over HTTP.
 
 ## Tech Stack
 
@@ -59,7 +65,7 @@ Responsibilities are cleanly split: **.NET** owns authentication, data persisten
 |---|---|
 | **Frontend** | React 19, TypeScript, Vite, React Router, Axios, react-markdown |
 | **Backend** | .NET 10 (ASP.NET Core Web API), Clean Architecture (Domain / Application / Infrastructure / Api), Entity Framework Core, JWT Bearer Auth, BCrypt |
-| **AI Service** | Python, FastAPI, Anthropic SDK (Claude), Voyage AI (embeddings), pypdf / python-docx (document extraction) |
+| **AI Service** | Python, FastAPI, **LangChain** (`langchain-core`, `langchain-classic` agents, `langchain-text-splitters`, `langchain-community` loaders), `langchain-anthropic` (Claude), `langchain-postgres` (PGVector), `langchain-voyageai` (embeddings), pypdf / python-docx (document extraction) |
 | **Database** | PostgreSQL 16 + pgvector (vector similarity search) |
 | **Infrastructure** | Docker Compose (PostgreSQL) |
 
@@ -78,7 +84,12 @@ chatbot-app/
 │       ├── ChatBot.Application/     # Services, DTOs, interfaces
 │       ├── ChatBot.Infrastructure/  # EF Core, repository implementations, AI service client
 │       └── ChatBot.Api/             # Controllers, DI configuration
-├── ai-service/          # Python FastAPI — Claude integration, embeddings, chunking
+├── ai-service/          # Python FastAPI + LangChain
+│   ├── main.py              # FastAPI routes, LangChain agent + tool-calling setup
+│   ├── vectorstore.py        # PGVector store/retriever (MMR search, per-user filtering)
+│   ├── chunking.py           # RecursiveCharacterTextSplitter
+│   ├── extraction.py         # Document loaders (PDF/DOCX/TXT/MD)
+│   └── rate_limit_retry.py   # Voyage AI rate-limit retry handling
 └── docker-compose.yml   # PostgreSQL + pgvector
 ```
 
@@ -138,7 +149,7 @@ The project is being built step by step, with small, verified commits. Main mile
 - [x] Voyage AI embeddings + pgvector integration
 - [x] End-to-end RAG pipeline
 - [x] Tool calling for automatic support ticket creation
-- [ ] Rewriting the same RAG pipeline with LangChain for comparison
+- [x] RAG pipeline rewritten on LangChain (agent, PGVector retriever, text splitter, document loaders)
 - [ ] Packaging the whole system with Docker Compose
 
 ## License
